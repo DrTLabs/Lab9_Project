@@ -1,0 +1,66 @@
+# Vivado Project Files
+*.xpr
+*.runs/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.srcs/
+*.gen/
+*.hbs
+*.jou
+*.log
+*.str
+*.pb
+*.wdb
+*.wcfg
+
+# Vivado HLS
+*.aps
+*.apj
+
+# Vivado IP
+*.xci
+*.xml
+component.xml
+
+# Bitstream and programming files
+*.bit
+*.bin
+*.ltx
+*.mcs
+*.prm
+
+# Simulation outputs (Icarus Verilog, etc.)
+*.vvp
+*.vcd
+*.lxt
+*.lxt2
+*.fst
+
+# Build artifacts
+*.o
+*.d
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor/IDE files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Backup files
+*.bak
+*.orig
