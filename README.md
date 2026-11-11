@@ -1,204 +1,149 @@
-# Lab 9: Sprinkler Controller (HLSM + Datapath)
+# Lab 9 Part 2: Building the Sprinkler Controller (Controller + Datapath)
+
+**Due: Thursday 11/19.** You can start as soon as you have this repo, and finishing before Thanksgiving break is a good idea.
 
 ## Overview
 
-In this lab, you will complete a sprinkler controller design that uses the zyBooks HLSM + Datapath architecture. The controller sequences through 5 watering stations, each with a configurable duration, using a finite state machine (FSM) that communicates with a datapath through control and status signals.
+In Part 1 you studied the sprinkler design: first as an FSMD with register transfers, then split into a controller and a datapath. Now you build exactly that design in Verilog. Keep the **Lab 9 Part 1 Design Handout** open while you work: every signal name in it is a port name in this repo.
 
-You will complete two files -- the controller FSM and the top-level module that wires everything together. All other modules (datapath, timer, display) are provided.
+The design splits into two halves:
 
-**Design Hierarchy:**
+- **Controller** (`sprinkler_controller.v`): a 5-state FSM that decides *when* things happen. It stores no numbers.
+- **Datapath** (`sprinkler_datapath.v`): three registers (`station`, `minutes`, and a cycle counter `cyc`), a duration mux, three comparators, and a valve decoder. Nothing in it changes unless the controller says so.
+
 ```
-sprinkler_top (top-level wrapper)
-├── sprinkler_controller  - FSM control logic (YOU COMPLETE)
-├── sprinkler_datapath    - Timer, station register, valve decoder (provided)
-│   └── timer             - Countdown timer (provided)
-└── display + hex_tdm     - 7-segment TDM display (provided, from Lab 7)
-    ├── counter            - Clock divider
-    ├── tdm_scan           - 2-bit scan index
-    ├── anode_decode        - Active-low anode selection
-    ├── mux                - Nibble selector
-    └── hex_to_7seg        - Hex-to-segment decoder
+             control: st_clr, st_inc, m_load, m_dec, c_clr
+   start ──> ┌────────────┐ ─────────────────────────────> ┌──────────────┐ ──> valves (LEDs)
+             │ Controller │                                │   Datapath   │ ──> station, minutes (display)
+             │   (FSM)    │ <───────────────────────────── │              │
+             └────────────┘     status: done, last, tick   └──────────────┘
 ```
 
-**Architecture Diagram:**
+### The controller (handout Figure 3)
+
 ```
-┌─────────────────────────────────────────────────┐
-│              sprinkler_top.v                     │
-│  ┌──────────────┐          ┌─────────────────┐  │
-│  │ Controller   │          │   Datapath       │  │
-│  │   (HLSM)    │          │                  │  │
-│  │              │──load_w──>│   - timer        │  │
-│  │  You will    │          │   - station reg  │  │
-│  │  complete    │──timer───>│   - valve dec    │  │
-│  │  this FSM!   │  _val_w  │                  │  │
-│  │              │          │                  │  │
-│  │              │<─done_w──│                  │  │
-│  └──────────────┘          └─────────────────┘  │
-│                                                  │
-│              Display & I/O (provided)            │
-└──────────────────────────────────────────────────┘
+              start                    tick & !done
+   IDLE ────────────> NEXT ──> LOAD ──> RUN ─────────────> DEC
+    ^ │ !start         ^ always  always  │ ^    always       │
+    └─┘                │                 │ └─────────────────┘
+                       └─ done & !last ──┤
+    ^                                    │
+    └────────────── done & last ─────────┘
 ```
+
+| State | st_clr | st_inc | m_load | m_dec | c_clr | Register transfers |
+|-------|:-:|:-:|:-:|:-:|:-:|---|
+| IDLE  | 1 | 0 | 0 | 0 | 1 | station ← 0, cyc ← 0 (all valves off); wait for start |
+| NEXT  | 0 | 1 | 0 | 0 | 1 | station ← station + 1, cyc ← 0 |
+| LOAD  | 0 | 0 | 1 | 0 | 1 | minutes ← this station's duration, cyc ← 0 |
+| RUN   | 0 | 0 | 0 | 0 | 0 | cyc ← cyc + 1 (count clock cycles) |
+| DEC   | 0 | 0 | 0 | 1 | 1 | minutes ← minutes − 1, cyc ← 0 |
+
+RUN has three arrows out. **`done` comes first**: when the station is finished, the controller leaves RUN even if `tick` is also 1.
+
+### The datapath (handout Figure 2)
+
+| Part | What it does |
+|------|--------------|
+| station register (3 bits) | `st_clr` → 0, `st_inc` → station + 1, otherwise hold. Station 0 means idle |
+| minutes register (7 bits) | `m_load` → duration, `m_dec` → minutes − 1, otherwise hold |
+| cycle counter `cyc` (26 bits) | `c_clr` → 0, otherwise cyc + 1. Like the laser range finder's counter: it is written in every state, so it needs no hold |
+| duration mux | select = station; inputs 1–5 = 15, 32, 12, 8, 20 minutes (parameters `ST1_TIME`..`ST5_TIME`); 0 otherwise |
+| comparators (status) | `done = (minutes == 0)`, `last = (station == 5)`, `tick = (cyc == CYCLES_PER_MIN - 1)` |
+| valve decoder | station 1 → `00001` … station 5 → `10000`; station 0 → `00000` |
+
+One minute is `CYCLES_PER_MIN` cycles counted in RUN plus one cycle in DEC. On the board `CYCLES_PER_MIN` = 33,000,000, so a minute is about 0.33 s.
 
 ---
 
-## Your Tasks
+## Your tasks
 
-1. **Complete `rtl/sprinkler_controller.v`** -- Implement FSM next state logic and Moore output logic for Stations 2-5 (Station 1 provided as example)
-2. **Complete `rtl/sprinkler_top.v`** -- Declare missing wires and instantiate the controller module
+Every place you write code is marked `// TODO`.
 
----
+1. **`rtl/sprinkler_controller.v`** (3 TODOs): the state register, next-state logic, and Moore output logic. The state names are given; the rest you write from Figure 3.
+2. **`rtl/sprinkler_datapath.v`** (6 TODOs): the three registers, the duration mux, the three status comparators, and the valve decoder.
+3. **`rtl/sprinkler_top.v`**: declare the five control wires and three status wires, and instantiate the controller. The datapath instance is given as a pattern.
 
-## Lab Activities
-
-### Step 1: Vivado Project Setup
-- [ ] Clone or download the Lab 9 template files
-- [ ] Launch Vivado and create a new project
-- [ ] Set the project location *outside* of the template directory
-- [ ] Add all `.v` files from `rtl/` as **design sources**
-- [ ] Add testbench files from `tb/` as **simulation sources**
-- [ ] Add the constraint file from `constraints/`
-- [ ] Select the Basys3 board as target
-
-### Step 2: Study the Provided Example (Station 1)
-- [ ] Open `rtl/sprinkler_controller.v` and study the Station 1 next state logic (LOAD_ST1, RUN_ST1)
-- [ ] Study the Station 1 output logic (load, station, timer_val for LOAD_ST1 and RUN_ST1)
-- [ ] Understand the pattern: LOAD states are unconditional transitions; RUN states wait for `done`
-
-### Step 3: Complete the Controller Next State Logic
-- [ ] Open `rtl/sprinkler_controller.v`
-- [ ] Search for `// TODO: Complete Station 2` and implement LOAD_ST2/RUN_ST2 transitions
-- [ ] Repeat for Stations 3, 4, and 5
-- [ ] Rules:
-  - LOAD states: **always** transition to the corresponding RUN state (unconditional)
-  - RUN states: transition to the next LOAD state **when `done` is high**
-  - RUN_ST5: return to IDLE when done
-
-### Step 4: Complete the Controller Output Logic
-- [ ] Search for `// TODO: Complete Station 2 outputs` in the same file
-- [ ] For each station, set three outputs: `load`, `station`, `timer_val`
-- [ ] Rules:
-  - LOAD states: `load=1`, `station=N`, `timer_val=STN_TIME`
-  - RUN states: `load=0`, `station=N`, `timer_val=STN_TIME`
-- [ ] Parameter reference: ST1=15, ST2=32, ST3=12, ST4=8, ST5=20 minutes
-
-### Step 5: Declare Wires in Top Module
-- [ ] Open `rtl/sprinkler_top.v`
-- [ ] Search for `// TODO: Declare timer_val_w`
-- [ ] Declare: `wire [6:0] timer_val_w;` (7-bit timer value)
-- [ ] Declare: `wire [2:0] station_w;` (3-bit station number)
-- [ ] Declare: `wire done_w;` (1-bit timer done status)
-
-### Step 6: Instantiate the Controller
-- [ ] Search for `// TODO: Write the complete instantiation here:`
-- [ ] Instantiate `sprinkler_controller` with instance name `u_controller`
-- [ ] Set all 5 station time parameters
-- [ ] Connect all 7 ports: `clk`, `rst`, `start`, `done`, `load`, `timer_val`, `station`
-
-### Step 7: Simulation
-- [ ] Set `sprinkler_sim_tb` as the simulation top module
-- [ ] Run behavioral simulation
-- [ ] Verify all 9 tests report PASS
-- [ ] Fix any failures before proceeding to hardware
-
-### Step 8: Hardware Implementation
-- [ ] Set `sprinkler_top` as the top module for synthesis
-- [ ] Synthesize, implement, and generate bitstream
-- [ ] Program the Basys3
-- [ ] Press **btnU** (Up) to start the watering sequence
-- [ ] Verify LEDs cycle through stations: led[0] through led[4]
-- [ ] Verify 7-segment display shows station number and countdown timer
-- [ ] Press **btnC** (Center) to reset at any time
+**Suggested order:** do the controller first and get the `test-controller` job (or the `controller_tb` simulation) passing before you touch the datapath. That way you debug one half at a time.
 
 ---
 
-## Checking Your Work
+## Lab activities
 
-When you push your code, GitHub Actions will automatically compile and test your design:
+### Step 1: Vivado project setup
+- [ ] Clone this repo with GitHub Desktop
+- [ ] Create a Vivado project **outside** the repo folder, targeting the Basys3
+- [ ] Add all `rtl/*.v` files as **design sources**
+- [ ] Add both `tb/*.v` files as **simulation sources**
+- [ ] Add `constraints/basys3.xdc`
 
-| CI Job | What It Tests | Files Compiled |
-|--------|--------------|----------------|
-| `test-sprinkler` | Full controller + datapath integration | All `rtl/*.v` + `tb/sprinkler_sim_tb.v` |
+### Step 2: Controller
+- [ ] Complete the three TODO sections in `rtl/sprinkler_controller.v`
+- [ ] Set `controller_tb` as the simulation top and run behavioral simulation
+- [ ] All tests should print `ok`. Each `FAIL` line names the state you expected and the state you got
+- [ ] Commit and push. The **Test sprinkler_controller** job should turn green
 
-The job must show **ALL TESTS PASS** for full credit. The testbench runs 9 tests covering reset, TDM display cycling, and all 5 station transitions.
+### Step 3: Datapath
+- [ ] Complete the six TODO sections in `rtl/sprinkler_datapath.v`
 
----
+### Step 4: Top module
+- [ ] Declare `st_clr_w`, `st_inc_w`, `m_load_w`, `m_dec_w`, `c_clr_w` and `done_w`, `last_w`, `tick_w`
+- [ ] Instantiate `sprinkler_controller` as `u_controller`
 
-## File Structure
+### Step 5: System simulation
+- [ ] Set `sprinkler_tb` as the simulation top and run behavioral simulation (Vivado's default 1000 ns is not enough; run for about 20 µs, or type `run all` in the Tcl console)
+- [ ] All tests should print `ok`. The test checks station order, each station's duration, and the return to IDLE
+- [ ] Commit and push. Both CI jobs should be green
 
-```
-├── rtl/
-│   ├── sprinkler_controller.v   # FSM controller (YOU COMPLETE)
-│   ├── sprinkler_top.v          # Top-level integration (YOU COMPLETE)
-│   ├── sprinkler_datapath.v     # Datapath: timer + station + valves (provided)
-│   ├── timer.v                  # Countdown timer (provided)
-│   ├── display.v                # Display formatter (provided)
-│   ├── bin2bcd.v                # Binary to BCD converter (provided)
-│   ├── hex_tdm.v                # TDM display wrapper (provided)
-│   ├── counter.v                # Clock divider (provided)
-│   ├── tdm_scan.v               # Scan controller (provided)
-│   ├── anode_decode.v           # Anode decoder (provided)
-│   ├── mux.v                   # Nibble mux (provided)
-│   └── hex_to_7seg.v           # 7-seg decoder (provided)
-├── tb/
-│   └── sprinkler_sim_tb.v      # Self-checking testbench (provided)
-├── constraints/
-│   └── basys3.xdc              # Pin assignments for Basys3
-└── .github/workflows/
-    └── test.yml                 # CI - auto-tests on push
-```
+### Step 6: Hardware
+- [ ] Set `sprinkler_top` as the top module; synthesize, implement, generate bitstream, program the board
+- [ ] Press **btnU** to start. LEDs 0–4 step through the stations; the display shows the station number and minutes left
+- [ ] **btnC** resets at any time
 
 ---
 
-## Hardware Interface
+## Checking your work
 
-### Inputs
+| CI job | What it tests | Files compiled |
+|--------|---------------|----------------|
+| `test-controller` | Your FSM alone: every transition and every output, including that `done` and `tick` are ignored in NEXT, LOAD and DEC, and that `done` beats `tick` in RUN | `tb/controller_tb.v`, `rtl/sprinkler_controller.v` |
+| `test-sprinkler` | Whole system: valve order, loaded minutes, how many clock cycles each station runs, return to IDLE, a second run | `tb/sprinkler_tb.v` and all `rtl/*.v` |
+
+Both jobs must show **ALL TESTS PASS** for full credit.
+
+---
+
+## Hardware interface
+
 | Port | Pin | Description |
 |------|-----|-------------|
-| `clk` | W5 | 100 MHz system clock |
-| `btnC` | U18 | Center button = synchronous reset (active-high) |
-| `btnU` | T18 | Up button = start watering sequence (active-high) |
-
-### Outputs
-| Port | Pins | Description |
-|------|------|-------------|
-| `seg[6:0]` | W7..U7 | 7-segment cathodes {g,f,e,d,c,b,a} (active-low) |
-| `an[3:0]` | U2..W4 | 7-segment anodes (active-low, one-hot) |
-| `led[4:0]` | U16..W18 | Station valve indicators (one-hot) |
-| `led[5]` | U15 | Timer done status (debug) |
-| `led[15:8]` | V13..L1 | Timer value (debug) |
-
-### Display Layout
-| Position | Content | Description |
-|----------|---------|-------------|
-| Leftmost (digit 3) | Station # | Current station (1-5, 0 = idle) |
-| Second from left | Blank | Display off |
-| Second from right | Tens digit | Timer minutes remaining (tens) |
-| Rightmost (digit 0) | Ones digit | Timer minutes remaining (ones) |
+| `clk` | W5 | 100 MHz clock |
+| `btnC` | U18 | Reset (active-high) |
+| `btnU` | T18 | Start |
+| `led[4:0]` | U16..W18 | Valves (one-hot) |
+| `led[5]` | U15 | `done` (debug) |
+| `led[6]` | U14 | `last` (debug) |
+| `led[15:9]` | | Minutes remaining in binary (debug) |
+| `seg`, `an` | | Display: station · blank · minutes tens · minutes ones |
 
 ---
 
-## Common Issues and Troubleshooting
+## Common problems
 
-### Controller Next State Logic
-- **Stuck in LOAD state**: LOAD transitions are unconditional -- do not add an `if` condition
-- **Stuck in RUN state**: Make sure you check `if (done)` before transitioning
-- **Wrong station order**: Verify RUN_ST2 goes to LOAD_ST3 (not LOAD_ST4), etc.
-- **Never leaves IDLE**: Verify you check `if (start)` in the IDLE state
+**Controller**
+- *Stuck in IDLE*: the IDLE case must check `start`.
+- *"NEXT always goes to LOAD", "LOAD always goes to RUN" or "DEC always goes back to RUN" failed*: those arrows are **unconditional**. Don't check `done` or `tick` there.
+- *"done beats tick" failed*: in RUN, test `done` before `tick`.
+- *Stops after station 1, or never stops*: RUN needs both `done` and `last` (the arrows to NEXT and to IDLE in Figure 3).
+- *Outputs show `x` in simulation*: you forgot the defaults at the top of the output block, or the `next_state = state;` default.
+- *Used `<=` in a combinational block, or `=` in the clocked block*: use `=` in `always @(*)` and `<=` in `always @(posedge clk)`.
 
-### Controller Output Logic
-- **Wrong timer value**: Each station uses its own parameter (ST1_TIME, ST2_TIME, etc.)
-- **Load always high**: `load=1` only in LOAD states, `load=0` in RUN states
-- **Wrong station number**: Station numbers are 1-5 (3'd1 through 3'd5), not 0-4
+**Datapath**
+- *Station 1 is skipped*: `st_clr` must load **0**. NEXT adds 1 before the first LOAD.
+- *Durations are wrong or in the wrong order*: check the mux case items against the spec table.
+- *"valve stays on for the station's duration" failed*: check the cycle counter (cleared by `c_clr`, otherwise +1), `tick = (cyc_r == CYCLES_PER_MIN - 1)`, and that `m_dec` subtracts 1.
+- *Never returns to IDLE after station 5*: check `last = (station_r == 5)`.
+- *An LED is on while idle*: the decoder's station 0 (default) must give `5'b00000`.
 
-### Top Module
-- **Undeclared identifier errors**: Missing wire declarations -- check bit widths (`[6:0]` for timer_val_w, `[2:0]` for station_w)
-- **Port connection mismatch**: Verify port names match exactly (e.g., `.done(done_w)` not `.done(done)`)
-- **Forgot semicolon**: Module instantiation ends with `);` on the last line
-
----
-
-## What to Submit
-
-Demo your working hardware to the instructor during lab. Start the watering sequence and show all 5 stations cycling with correct LED and display output.
-
-No code submission is required -- GitHub CI will verify your Verilog automatically when you push.
+**Top**
+- *Port name errors*: the controller port names are `st_clr`, `st_inc`, `m_load`, `m_dec`, `c_clr`, `done`, `last`, `tick`; connect each to its `_w` wire.

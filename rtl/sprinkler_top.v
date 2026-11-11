@@ -1,160 +1,80 @@
-// Sprinkler Controller Top Module (zyBooks HLSM + Datapath Architecture)
+// Sprinkler Top Module (Basys3) -- YOU COMPLETE THE TODOs
 //
-// STUDENT TEMPLATE VERSION
-// Complete the TODOs to wire up the controller and datapath
+//   btnC = reset, btnU = start
+//   led[4:0]  = valves (one-hot),  led[5] = done,  led[6] = last
+//   led[15:9] = minutes remaining (binary, debug)
+//   7-seg     = station | blank | minutes tens | minutes ones
 //
-// This module demonstrates the zyBooks methodology of separating:
-// - Controller (HLSM): High-Level State Machine for control logic
-// - Datapath: Data processing and storage
-// - Top Level: Integration and I/O interfacing
-//
-// The top module:
-// 1. Instantiates the HLSM controller
-// 2. Instantiates the datapath
-// 3. Connects control and status signals between them
-// 4. Instantiates display subsystem
-// 5. Maps to Basys3 board I/O pins
+// CYCLES_PER_MIN and TDM_N are parameters so the testbench can run this
+// exact module fast. Leave the defaults alone for hardware.
 
-module sprinkler_top (
+module sprinkler_top #(
+    parameter CYCLES_PER_MIN = 33_000_000,  // 1 "minute" = 0.33 s
+    parameter TDM_N          = 16           // ~763 Hz digit refresh
+) (
     input         clk,
     input         btnC,
     input         btnU,
     output [6:0]  seg,
     output [3:0]  an,
-    output [15:0] led    // Expanded for debug
+    output [15:0] led
 );
-
-    // ========================================
-    // I/O Signal Mapping
-    // ========================================
-    wire rst = btnC;
+    wire rst   = btnC;
     wire start = btnU;
 
-    // ========================================
-    // Control Signals (HLSM -> Datapath)
-    // ========================================
-    // TODO: Declare wires for control signals from controller to datapath
-    //
-    // You need three wires:
-    // 1. load_w        - 1-bit wire to trigger timer load
-    // 2. timer_val_w   - 7-bit wire for timer value
-    // 3. station_w     - 3-bit wire for station selection
-    //
-    // EXAMPLE: First wire is declared for you:
-    wire       load_w;
-
-    // TODO: Declare timer_val_w (7 bits)
-
-    // TODO: Declare station_w (3 bits)
+    // ---------------- Control: controller -> datapath ----------------
+    // TODO: declare the five 1-bit control wires:
+    //       st_clr_w, st_inc_w, m_load_w, m_dec_w, c_clr_w
 
 
-    // ========================================
-    // Status Signals (Datapath -> HLSM)
-    // ========================================
-    // TODO: Declare wire for status signal from datapath to controller
-    //
-    // You need one wire:
-    // done_w - 1-bit wire indicating timer completion
-
-    // TODO: Declare done_w
+    // ---------------- Status: datapath -> controller ----------------
+    // TODO: declare the three 1-bit status wires: done_w, last_w, tick_w
 
 
-    // ========================================
-    // Data Signals (Datapath -> Display)
-    // ========================================
-    // These are provided for you (no changes needed)
-    wire [6:0] time_val_w;
-    wire [3:0] station_num_w;
+    // ---------------- Data: datapath -> outputs ----------------
+    wire [2:0] station_w;
+    wire [6:0] minutes_w;
     wire [4:0] valves_w;
 
-    // ========================================
-    // HLSM Controller Instantiation
-    // ========================================
-    // TODO: Instantiate the sprinkler_controller module
-    //
-    // The controller implements the state machine that sequences through
-    // the 5 watering stations based on timer completion status
-    //
-    // Module: sprinkler_controller
-    // Instance name: u_controller
-    //
-    // Parameters to set:
-    //   .ST1_TIME(7'd15)   - Station 1: 15 minutes
-    //   .ST2_TIME(7'd32)   - Station 2: 32 minutes
-    //   .ST3_TIME(7'd12)   - Station 3: 12 minutes
-    //   .ST4_TIME(7'd8)    - Station 4: 8 minutes
-    //   .ST5_TIME(7'd20)   - Station 5: 20 minutes
-    //
-    // Ports to connect:
-    //   .clk(clk)              - System clock
-    //   .rst(rst)              - Reset signal
-    //   .start(start)          - Start button
-    //   .done(done_w)          - Timer done status FROM datapath
-    //   .load(load_w)          - Load signal TO datapath
-    //   .timer_val(timer_val_w) - Timer value TO datapath
-    //   .station(station_w)    - Station select TO datapath
-    //
-    // HINT: Follow this pattern:
-    //   sprinkler_controller #(
-    //       .ST1_TIME(7'd15),
-    //       ...
-    //   ) u_controller (
-    //       .clk(clk),
-    //       ...
-    //   );
-
-    // TODO: Write the complete instantiation here:
+    // ---------------- Controller ----------------
+    // TODO: instantiate sprinkler_controller with instance name u_controller.
+    //       Connect clk, rst, start, the three status wires, and the five
+    //       control wires. Use the datapath instance below as a pattern.
 
 
 
-
-
-
-
-    // ========================================
-    // Datapath Instantiation
-    // ========================================
-    // This is provided for you (no changes needed)
-    // The datapath contains the countdown timer, station register,
-    // and valve decoder
+    // ---------------- Datapath (given) ----------------
     sprinkler_datapath #(
-        .CYCLES_PER_MIN(33_000_000)  // Time scale: 1 min = 0.33 sec
+        .CYCLES_PER_MIN(CYCLES_PER_MIN)
     ) u_datapath (
         .clk(clk),
         .rst(rst),
-
-        // Control from HLSM
-        .load(load_w),
-        .val(timer_val_w),
-        .station(station_w),
-
-        // Status to HLSM
+        .st_clr(st_clr_w),
+        .st_inc(st_inc_w),
+        .m_load(m_load_w),
+        .m_dec(m_dec_w),
+        .c_clr(c_clr_w),
         .done(done_w),
-
-        // Data outputs
-        .time_val(time_val_w),
-        .station_num(station_num_w),
+        .last(last_w),
+        .tick(tick_w),
+        .station(station_w),
+        .minutes(minutes_w),
         .valves(valves_w)
     );
 
-    // ========================================
-    // Display Subsystem (Provided - No changes needed)
-    // ========================================
-    // Format display data
+    // ---------------- Display (provided) ----------------
+    // Station 0 means idle
+    wire [3:0]  station_disp = {1'b0, station_w};
     wire [15:0] disp_w;
+    wire [3:0]  an_raw_w;
 
     display u_display (
-        .station_val(station_num_w),
-        .time_val(time_val_w),
+        .station_val(station_disp),
+        .time_val(minutes_w),
         .disp_w(disp_w)
     );
 
-    // 7-Segment TDM Display Driver
-    wire [3:0] an_raw_w;
-
-    hex_tdm #(
-        .N(16)  // Hardware: 763 Hz refresh rate (smooth, flicker-free)
-    ) u_hex_tdm (
+    hex_tdm #(.N(TDM_N)) u_hex_tdm (
         .clk(clk),
         .btnC(btnC),
         .disp(disp_w),
@@ -162,17 +82,9 @@ module sprinkler_top (
         .an(an_raw_w)
     );
 
-    // Use only 3 of 4 displays: station (leftmost), tens, ones (rightmost)
-    // Turn off the second-from-left display (anode[2])
-    // Anodes are active-low: 0=on, 1=off
+    // Blank the second digit from the left
     assign an = {an_raw_w[3], 1'b1, an_raw_w[1:0]};
 
-    // ========================================
-    // LED Outputs (Debug Mode)
-    // ========================================
-    // led[4:0]  - Valve control signals
-    // led[5]    - done status (debug)
-    // led[15:8] - time_val lower 8 bits (debug)
-    assign led = {time_val_w, 2'b00, done_w, valves_w};
-
+    // ---------------- LEDs ----------------
+    assign led = {minutes_w, 2'b00, last_w, done_w, valves_w};
 endmodule

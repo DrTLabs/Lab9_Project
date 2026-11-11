@@ -7,7 +7,7 @@ on:
     branches: [ main, master ]
 
 jobs:
-  test-sprinkler:
+  test-controller:
     name: Test sprinkler_controller
     runs-on: ubuntu-latest
     steps:
@@ -16,14 +16,28 @@ jobs:
       - name: Install Icarus Verilog
         run: sudo apt-get update && sudo apt-get install -y iverilog
 
-      - name: Test Sprinkler Controller
+      - name: Controller unit test
         run: |
-          iverilog -o sim.vvp -g2012 \
-            tb/sprinkler_sim_tb.v \
+          iverilog -g2012 -o ctrl.vvp tb/controller_tb.v rtl/sprinkler_controller.v
+          vvp ctrl.vvp | tee output.txt
+          grep -q "ALL TESTS PASS" output.txt
+
+  test-sprinkler:
+    name: Test full sprinkler system
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Icarus Verilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+
+      - name: System test (controller + datapath + top)
+        run: |
+          iverilog -g2012 -o sim.vvp \
+            tb/sprinkler_tb.v \
             rtl/sprinkler_top.v \
             rtl/sprinkler_controller.v \
             rtl/sprinkler_datapath.v \
-            rtl/timer.v \
             rtl/display.v \
             rtl/bin2bcd.v \
             rtl/hex_tdm.v \

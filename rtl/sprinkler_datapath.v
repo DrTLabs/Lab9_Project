@@ -1,91 +1,96 @@
-// Sprinkler Datapath Module (zyBooks Style)
-// Contains all data storage and processing elements
+// Sprinkler Datapath -- YOU COMPLETE THIS FILE
 //
-// This module follows the zyBooks HLSM + Datapath design methodology where:
-// - Datapath contains registers, functional units, and status logic
-// - Controller (HLSM) sends control signals to direct datapath operations
-// - Datapath sends status signals back to controller for decision making
+// Build this from the Lab 9 Part 1 Design Handout, Figure 2.
+// The datapath holds the data and does the work, but only when the
+// controller tells it to. Each register changes only on a control signal:
 //
-// Control Signals (from HLSM):
-//   load      - Load timer with new value and start countdown
-//   val       - Value to load into timer (in minutes)
-//   station   - Current station selection (0=idle, 1-5=stations)
+//   station : st_clr -> 0,         st_inc -> station + 1,   else hold
+//   minutes : m_load -> duration,  m_dec  -> minutes - 1,   else hold
+//   cyc     : c_clr  -> 0,         else cyc + 1   (counts clock cycles)
 //
-// Status Signals (to HLSM):
-//   done      - Timer has reached zero
-//
-// Data Outputs:
-//   time_val     - Current countdown value
-//   station_num  - Current station number for display
-//   valves       - Valve control signals (one-hot encoded)
+//   duration mux : select = station; inputs = each station's minutes
+//   status       : done = (minutes == 0), last = (station == 5),
+//                  tick = (cyc == CYCLES_PER_MIN - 1)
+//   valve decoder: station -> one-hot valves (station 0 = all off)
 
 module sprinkler_datapath #(
-    parameter CYCLES_PER_MIN = 33_000_000  // 0.33 seconds at 100 MHz
+    parameter CYCLES_PER_MIN = 33_000_000,
+    parameter ST1_TIME = 7'd15,
+    parameter ST2_TIME = 7'd32,
+    parameter ST3_TIME = 7'd12,
+    parameter ST4_TIME = 7'd8,
+    parameter ST5_TIME = 7'd20
 ) (
-    input              clk,
-    input              rst,
+    input        clk,
+    input        rst,
 
-    // Control signals from HLSM
-    input              load,
-    input  [6:0]       val,
-    input  [2:0]       station,      // 0-5 encoded in 3 bits
+    // Control from controller
+    input        st_clr,
+    input        st_inc,
+    input        m_load,
+    input        m_dec,
+    input        c_clr,
 
-    // Status signals to HLSM
-    output             done,
+    // Status to controller
+    output       done,
+    output       last,
+    output       tick,
 
     // Data outputs
-    output [6:0]       time_val,
-    output [3:0]       station_num,
-    output [4:0]       valves
+    output [2:0] station,
+    output [6:0] minutes,
+    output [4:0] valves
 );
+    // ---------------- Registers (handout Figure 2) ----------------
+    reg [2:0]  station_r;
+    reg [6:0]  minutes_r;
+    reg [25:0] cyc_r;
+    reg [6:0]  duration;      // mux output (TODO 4)
 
-    // ========================================
-    // Countdown Timer (Functional Unit)
-    // ========================================
-    timer #(
-        .CYCLES_PER_MIN(CYCLES_PER_MIN)
-    ) u_timer (
-        .clk(clk),
-        .rst(rst),
-        .load(load),
-        .val(val),
-        .time_val(time_val),
-        .done(done)
-    );
+    // TODO 1: station register. An always @(posedge clk) block.
+    //   rst or st_clr -> station_r <= 0
+    //   st_inc        -> station_r <= station_r + 1
+    //   (otherwise it holds its value -- no else needed)
 
-    // ========================================
-    // Station Number Register
-    // ========================================
-    // Stores current station for display
-    reg [3:0] station_reg;
 
-    always @(posedge clk) begin
-        if (rst)
-            station_reg <= 4'd0;
-        else
-            station_reg <= {1'b0, station};  // Extend 3-bit to 4-bit for display
-    end
 
-    assign station_num = station_reg;
+    // TODO 2: minutes register. An always @(posedge clk) block.
+    //   rst    -> minutes_r <= 0
+    //   m_load -> minutes_r <= duration
+    //   m_dec  -> minutes_r <= minutes_r - 1
+    //   (otherwise it holds)
 
-    // ========================================
-    // Valve Decoder (Combinational Logic)
-    // ========================================
-    // Converts station selection to one-hot valve control
-    reg [4:0] valve_decode;
 
-    always @(*) begin
-        case (station)
-            3'd0:    valve_decode = 5'b00000;  // Idle
-            3'd1:    valve_decode = 5'b00001;  // Station 1
-            3'd2:    valve_decode = 5'b00010;  // Station 2
-            3'd3:    valve_decode = 5'b00100;  // Station 3
-            3'd4:    valve_decode = 5'b01000;  // Station 4
-            3'd5:    valve_decode = 5'b10000;  // Station 5
-            default: valve_decode = 5'b00000;
-        endcase
-    end
 
-    assign valves = valve_decode;
+    // TODO 3: cycle counter. An always @(posedge clk) block.
+    //   rst or c_clr -> cyc_r <= 0
+    //   otherwise    -> cyc_r <= cyc_r + 1   (it counts in every other cycle)
 
+
+
+    assign station = station_r;
+    assign minutes = minutes_r;
+
+    // ---------------- Duration mux (handout Figure 2) ----------------
+    // TODO 4: an always @(*) block with a case on station_r (the select).
+    //   Select 1-5 picks ST1_TIME .. ST5_TIME. Default gives 0.
+
+
+
+    // ---------------- Status (handout Figure 2) ----------------
+    // TODO 5: three assign statements, one comparator each:
+    //   done, last, tick
+
+
+
+    // ---------------- Valve decoder (handout Figure 2) ----------------
+    reg [4:0] valves_r;
+
+    // TODO 6: an always @(*) block with a case on station_r.
+    //   Station 1 -> 5'b00001, ... station 5 -> 5'b10000.
+    //   Default (including station 0 = idle) -> 5'b00000.
+
+
+
+    assign valves = valves_r;
 endmodule
